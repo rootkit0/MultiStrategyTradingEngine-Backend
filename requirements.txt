@@ -1,0 +1,6 @@
+fastapi==0.83.0
+uvicorn
+SQLAlchemy
+pymysql
+httpx
+python-dotenv
