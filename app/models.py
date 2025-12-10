@@ -3,6 +3,8 @@ from enum import Enum as PyEnum
 
 from sqlalchemy import (
     Column,
+    BigInteger,
+    DECIMAL,
     String,
     DateTime,
     Float,
@@ -83,3 +85,19 @@ class PnLSnapshot(Base):
     unrealized_pnl = Column(Float, nullable=False)
 
     strategy_instance = relationship("StrategyInstance", back_populates="pnl_snapshots")
+
+class Candle(Base):
+    __tablename__ = "candles"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    symbol = Column(String(10), nullable=False)
+    interval = Column(String(5), nullable=False)
+    open_time = Column(BigInteger, nullable=False)
+
+    open = Column(DECIMAL(18,8), nullable=False)
+    high = Column(DECIMAL(18,8), nullable=False)
+    low = Column(DECIMAL(18,8), nullable=False)
+    close = Column(DECIMAL(18,8), nullable=False)
+    volume = Column(DECIMAL(18,8), nullable=False)
+
+    close_time = Column(BigInteger, nullable=False)
