@@ -1,81 +1,125 @@
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
+
 from db import SessionLocal
-from models import Candle
+import models
 
-BASE_URL = "https://api.binance.com/api/v3/klines"
+BINANCE_URL = "https://api.binance.com/api/v3/klines"
 
-SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "XAUUSDT"]
+SYMBOLS = [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "ADAUSDT",
+    "PAXGUSDT",
+]
+
+# Intervalo de las velas
 INTERVAL = "1m"
 
 
-def fetch_candles(symbol: str, start: int, end: int):
+def fetch_klines(symbol, start_ms, end_ms):
+    """
+    Descarga velas de Binance entre start_ms y end_ms (milisegundos)
+    para un símbolo y un intervalo dados.
+    """
     params = {
         "symbol": symbol,
         "interval": INTERVAL,
-        "startTime": start,
-        "endTime": end,
+        "startTime": start_ms,
+        "endTime": end_ms,
         "limit": 1000,
     }
-    r = requests.get(BASE_URL, params=params)
-    r.raise_for_status()
-    return r.json()
+    resp = requests.get(BINANCE_URL, params=params, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def load_market_data():
     db = SessionLocal()
     now_ms = int(datetime.utcnow().timestamp() * 1000)
-
     one_month_ms = 30 * 24 * 60 * 60 * 1000
 
     for symbol in SYMBOLS:
+        print("=== {} ===".format(symbol))
+
+        # Buscar la última vela que tenemos en BD para este símbolo+intervalo
         last = (
             db.query(models.Candle)
-            .filter(models.Candle.symbol == symbol)
+            .filter(
+                models.Candle.symbol == symbol,
+                models.Candle.interval == INTERVAL,
+            )
             .order_by(models.Candle.open_time.desc())
             .first()
         )
 
-        # FIRST TIME → DOWNLOAD 1 FULL MONTH
         if last is None:
-            print(f"[{symbol}] No data found, downloading 1 month...")
-            start_ts = now_ms - one_month_ms
+            # Primera vez que cargamos este símbolo
+            start_ms = now_ms - one_month_ms
+            print("No hay datos en BD. Descargando 1 mes desde {}.".format(start_ms))
         else:
-            start_ts = last.open_time + 60_000  # next minute
+            # Continuar a partir del siguiente minuto
+            start_ms = int(last.open_time) + 60_000
+            print(
+                "Última vela en BD: {}. Empezando en {}.".format(
+                    last.open_time, start_ms
+                )
+            )
 
-        end_ts = now_ms
+        if start_ms >= now_ms:
+            print("No hay nada nuevo que descargar para {}.".format(symbol))
+            continue
 
-        print(f"[{symbol}] Fetching candles from {start_ts} to {end_ts}")
+        ts = start_ms
+        while ts < now_ms:
+            batch_end = min(ts + 1000 * 60_000, now_ms)
+            print(
+                "Descargando velas {} de {} a {}...".format(
+                    symbol, ts, batch_end
+                )
+            )
 
-        ts = start_ts
-        while ts < end_ts:
-            batch_end = min(ts + (1000 * 60_000), end_ts)
-            candles = fetch_candles(symbol, ts, batch_end)
-
-            for c in candles:
-                db.add(models.Candle(
-                    symbol=symbol,
-                    interval=INTERVAL,
-                    open_time=c[0],
-                    open=c[1],
-                    high=c[2],
-                    low=c[3],
-                    close=c[4],
-                    volume=c[5],
-                    close_time=c[6],
-                ))
-
-            db.commit()
-            print(f"[{symbol}] Stored {len(candles)} candles")
-
-            if len(candles) < 1000:
+            try:
+                klines = fetch_klines(symbol, ts, batch_end)
+            except Exception as e:
+                print("Error descargando velas para {}: {}".format(symbol, e))
                 break
 
-            ts = candles[-1][0] + 60_000
+            if not klines:
+                print("Sin velas devueltas para {}. Saliendo del bucle.".format(symbol))
+                break
+
+            # Insertar velas en la BD
+            for k in klines:
+                candle = models.Candle(
+                    symbol=symbol,
+                    interval=INTERVAL,
+                    open_time=k[0],
+                    open=k[1],
+                    high=k[2],
+                    low=k[3],
+                    close=k[4],
+                    volume=k[5],
+                    close_time=k[6],
+                )
+                db.add(candle)
+
+            try:
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                print("Error haciendo commit para {}: {}".format(symbol, e))
+                break
+
+            print("Guardadas {} velas para {}.".format(len(klines), symbol))
+
+            ts = klines[-1][0] + 60_000
+
+            if len(klines) < 1000:
+                break
 
     db.close()
 
-
 if __name__ == "__main__":
     load_market_data()
-
