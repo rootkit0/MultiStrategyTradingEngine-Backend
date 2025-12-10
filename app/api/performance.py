@@ -7,7 +7,7 @@ import models, schemas
 from api.deps import get_db
 from services.pnl import compute_performance_for_instance
 
-router = APIRouter(prefix="/api/strategy-instances", tags=["performance"])
+router = APIRouter(prefix="/instances", tags=["performance"])
 
 @router.get("/{instance_id}/performance", response_model=schemas.PerformanceRead)
 def get_performance(instance_id: UUID, db: Session = Depends(get_db)):

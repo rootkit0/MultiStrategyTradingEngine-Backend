@@ -8,7 +8,7 @@ from api.deps import get_db
 from strategy.runner import StrategyRunner
 from typing import Optional, List
 
-router = APIRouter(prefix="/api/strategy-instances", tags=["strategy-instances"])
+router = APIRouter(prefix="/instances", tags=["strategy-instances"])
 
 runner: Optional[StrategyRunner] = None
 

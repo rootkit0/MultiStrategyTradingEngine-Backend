@@ -6,7 +6,7 @@ import models, schemas
 from api.deps import get_db
 from typing import List
 
-router = APIRouter(prefix="/api/strategy-instances", tags=["trades-positions"])
+router = APIRouter(prefix="/instances", tags=["trades-positions"])
 
 @router.get("/{instance_id}/trades", response_model=List[schemas.TradeRead])
 def get_trades(instance_id: UUID, db: Session = Depends(get_db)):
